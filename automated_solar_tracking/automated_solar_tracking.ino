@@ -35,7 +35,7 @@
 
 
 /* LDR Global Vars */
-uint16_t ldr_array[LDR_COUNT]
+uint16_t ldr_array[LDR_COUNT];
 
 /* Servo Global Vars */
 Servo altitude_servo;
@@ -116,8 +116,8 @@ void checkError(int16_t *altitude_error, int16_t *azimuth_error) {
       Serial.print("LDR BL:\t\t"); Serial.println(ldr_array[LDR_BL]);
     #endif
 
-    Serial.print("Altitude Error:\t\t"); Serial.println(altitude_error);
-    Serial.print("Azimuth Error:\t\t"); Serial.println(azimuth_error);
+    Serial.print("Altitude Error:\t\t"); Serial.println((int)altitude_error);
+    Serial.print("Azimuth Error:\t\t"); Serial.println((int)azimuth_error);
   #endif
 
 }
@@ -151,7 +151,7 @@ void repositionPanel(int16_t altitude_error, int16_t azimuth_error) {
   #endif
 
   altitude_servo.write(new_altitude_angle);
-  azimuth_servo.write(new_azimuth_angle;
+  azimuth_servo.write(new_azimuth_angle);
 
   delay(15); // wait for servos to move into proper position.
 }

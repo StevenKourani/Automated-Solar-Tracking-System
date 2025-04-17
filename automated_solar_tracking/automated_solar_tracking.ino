@@ -16,7 +16,7 @@
 #define DEBUG_MODE_VERBOSE 1    // Prints out extra debug info to serial monitor if DEBUG_MODE == 1 (LDR values)
 
 /* GPIO DEFINES */
-#define AZIMUTH_SERVO_PIN 0
+#define AZIMUTH_SERVO_PIN 6
 #define ALTITUDE_SERVO_PIN 0
 
 #define LDR_TL_PIN A0
@@ -69,13 +69,28 @@ void setup() {
 
 void loop() {
   // According to our FSM/Feedback loop
-  while (abs(altitude_error) > 1 || abs(azimuth_error) > 2) {   /*We need to figure out this*/
-    checkError(&altitude_error, &azimuth_error);
-    repositionPanel(altitude_error, azimuth_error);
-  }
 
+  //while (abs(altitude_error) > 1 || abs(azimuth_error) > 2) {   /*We need to figure out this*/
+  //  checkError(&altitude_error, &azimuth_error);
+  //  repositionPanel(altitude_error, azimuth_error);
+  //}
+
+  // 0 (dark) to 1023 (bright)
+  //ldrValue1 = analogRead(ldrPin1);    //Layout 1 2
+  //ldrValue2 = analogRead(ldrPin2);    //       3 4
+  //ldrValue3 = analogRead(ldrPin3);
+  //ldrValue4 = analogRead(ldrPin4);  
+
+  //altitude_error = (abs((ldrValue1 - ldrValue3) / ldrValue1) + abs((ldrValue2 - ldrValue4) / ldrValue2)) / 2; 
+  //azimuth_error = (abs((ldrValue1 - ldrValue2) / ldrValue1) + abs((ldrValue3 - ldrValue4) / ldrValue3)) / 2; 
+
+  //azimuth_servo.write(180);
+  //delay(500);
+  //azimuth_servo.write(0);
+
+  //Serial.println("test");
   // Go to idle for some time
-  delay(1000);  // delay 1s
+  delay(3000);  // delay 1s
   // ideally we change this to
   //  1. Set timer for 1hr (is this even possible without external RTC)
   //  2. Deep sleep mode waiting for interrupt

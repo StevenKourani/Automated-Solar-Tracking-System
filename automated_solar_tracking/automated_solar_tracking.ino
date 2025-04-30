@@ -10,6 +10,7 @@
  */
 #include <stdint.h>
 #include <Servo.h>
+#include <TimerOne.h>
 
 /* MODE Defines */
 #define DEBUG_MODE 1            // Prints out debug info to serial monitor (errors & angles)
@@ -44,6 +45,9 @@ Servo azimuth_servo;
 int16_t altitude_error;
 int16_t azimuth_error;
 
+/* Timer Global Vars */
+int16_t count;
+
 void setup() {
   #if DEBUG_MODE
     Serial.begin(9600); // Start serial so we can print to ArduinoIDE serial viewer
@@ -63,40 +67,17 @@ void setup() {
   altitude_servo.write(0);
   azimuth_servo.write(0);
 
+  //ISR Timer Setup
+  Timer1.initialize(1000000);
+  Timer1.attachInterrupt(TimerISR);
+
   // Movement delay time.
   delay(10);
 }
 
 void loop() {
-  // According to our FSM/Feedback loop
-
-  //while (abs(altitude_error) > 1 || abs(azimuth_error) > 2) {   /*We need to figure out this*/
-  //  checkError(&altitude_error, &azimuth_error);
-  //  repositionPanel(altitude_error, azimuth_error);
-  //}
-
-  // 0 (dark) to 1023 (bright)
-  //ldrValue1 = analogRead(ldrPin1);    //Layout 1 2
-  //ldrValue2 = analogRead(ldrPin2);    //       3 4
-  //ldrValue3 = analogRead(ldrPin3);
-  //ldrValue4 = analogRead(ldrPin4);  
-
-  //altitude_error = (abs((ldrValue1 - ldrValue3) / ldrValue1) + abs((ldrValue2 - ldrValue4) / ldrValue2)) / 2; 
-  //azimuth_error = (abs((ldrValue1 - ldrValue2) / ldrValue1) + abs((ldrValue3 - ldrValue4) / ldrValue3)) / 2; 
-
-  //azimuth_servo.write(180);
-  //delay(500);
-  //azimuth_servo.write(0);
-
-  //Serial.println("test");
-  // Go to idle for some time
-  delay(3000);  // delay 1s
-  // ideally we change this to
-  //  1. Set timer for 1hr (is this even possible without external RTC)
-  //  2. Deep sleep mode waiting for interrupt
 
 }
-
 
 void ldr_array_read(uint16_t *ldr_array) {
   *(ldr_array + LDR_TL) = analogRead(LDR_TL_PIN);
@@ -106,7 +87,7 @@ void ldr_array_read(uint16_t *ldr_array) {
 }
 
 void checkError(int16_t *altitude_error, int16_t *azimuth_error) {
-  ldr_array_read(ldr_array);
+  //ldr_array_read(ldr_array);
 
   // Possibly a better algorithm for this? I think max works well because there is 2 LDRs per direction, but depending on the diagional
   // aspect of the sun, one of the LDRs for each direction will always see the sun better and the other will not be able to tell us much.
@@ -169,4 +150,15 @@ void repositionPanel(int16_t altitude_error, int16_t azimuth_error) {
   azimuth_servo.write(new_azimuth_angle);
 
   delay(15); // wait for servos to move into proper position.
+}
+
+void TimerISR() {
+  count++;
+  if (count > 10) { // 10 second tmp
+    ldr_array_read(ldr_array);                      
+    checkError(&altitude_error, &azimuth_error);    
+    repositionPanel(altitude_error, azimuth_error);
+    Serial.println("10 seconds passed"); 
+    count = 0;
+  }
 }

@@ -147,6 +147,11 @@ void repositionPanel(int16_t altErr, int16_t aziErr) {
   // Logic for backwards movement
   deltaAzi = (oldAltAng < 90) ? -1 * deltaAzi : deltaAzi;
 
+  // Low error no need to move
+  if (abs(deltaAlt) < 2 && abs(deltaAzi) < 2) {
+    return;
+  }
+
   // new angles
   int16_t newAlt = constrain(oldAltAng + deltaAlt,  0, 180);
   int16_t newAzi = constrain(oldAziAng + deltaAzi, 0, 180);
@@ -177,7 +182,7 @@ void setupTimer2() {
   // Set compare match value for ~2ms tick (500 Hz)
   OCR2A = 249; // (16MHz / 128 / (249 + 1)) = ~500 Hz
 
-  // Enable interrupt on match
+  // En le interrupt on match
   TIMSK2 |= (1 << OCIE2A);
 
   // Set prescaler to 128 and start Timer2

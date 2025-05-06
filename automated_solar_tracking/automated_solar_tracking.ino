@@ -1,24 +1,20 @@
 /**
  * @file automated_solar_tracking.ino
  * @authors Blake, Steven, Garrett
- * @date 4/7/2025
+ * @date 04/07/2025 (updated 05/02/2025)
  * 
- *  Revisions/Comments/TODOs/FIXMEs
- *  04/07/2025    -   Initial Creation, Create setup, loop, checkError, repositionPanel (Blake)
- *  04/07/2025    -   TODO: Look into reading voltage of battery/battery charge amount so we can demo and show battery charging (Blake)
- *  04/07/2025    -   FIXME: The servo GPIO pin macros are wrong, need to pick 2 D pins to use.
+ * 
  */
-#include <stdint.h>
+
 #include <Servo.h>
-#include <TimerOne.h>
 
-/* MODE Defines */
-#define DEBUG_MODE 1            // Prints out debug info to serial monitor (errors & angles)
-#define DEBUG_MODE_VERBOSE 1    // Prints out extra debug info to serial monitor if DEBUG_MODE == 1 (LDR values)
+/* DEBUG Defines */
+#define DEBUG_MODE         1  
+#define DEBUG_MODE_VERBOSE 1
 
-/* GPIO DEFINES */
-#define AZIMUTH_SERVO_PIN 6
-#define ALTITUDE_SERVO_PIN 0
+/* GPIO Defines */
+#define AZIMUTH_SERVO_PIN   6
+#define ALTITUDE_SERVO_PIN  9
 
 #define LDR_TL_PIN A0
 #define LDR_TR_PIN A1
@@ -27,138 +23,129 @@
 
 /* LDR Defines */
 #define LDR_COUNT 4
-#define LDR_TL 0
-#define LDR_TR 1
-#define LDR_BL 2
-#define LDR_BR 3
+#define LDR_TL    0
+#define LDR_TR    1
+#define LDR_BL    2
+#define LDR_BR    3
 
-/* Servo Defines */
+// PD Gains
+const float Kp_az  = 0.05;
+const float Kd_az  = 0.005;
+const float Kp_alt = 0.05;
+const float Kd_alt = 0.005;
 
-
-/* LDR Global Vars */
 uint16_t ldr_array[LDR_COUNT];
+int16_t altitude_error = 0, azimuth_error = 0;
+int16_t prevAltError  = 0, prevAzError   = 0;
+Servo altitude_servo, azimuth_servo;
 
-/* Servo Global Vars */
-Servo altitude_servo;
-Servo azimuth_servo;
+// millis() timing
+unsigned long lastUpdate     = 0;
+const unsigned long interval = 10UL * 100UL;  // 10 seconds
 
-int16_t altitude_error;
-int16_t azimuth_error;
-
-/* Timer Global Vars */
-int16_t count;
 
 void setup() {
   #if DEBUG_MODE
-    Serial.begin(9600); // Start serial so we can print to ArduinoIDE serial viewer
+    Serial.begin(9600);
   #endif
-  
-  // LDR Setup
+
   pinMode(LDR_TL_PIN, INPUT);
   pinMode(LDR_TR_PIN, INPUT);
   pinMode(LDR_BL_PIN, INPUT);
   pinMode(LDR_BR_PIN, INPUT);
 
-  // Servo Setup
   altitude_servo.attach(ALTITUDE_SERVO_PIN);
   azimuth_servo.attach(AZIMUTH_SERVO_PIN);
 
-  // Initial Angles. Necessary?
-  altitude_servo.write(0);
-  azimuth_servo.write(0);
+  // Center panel at 90, or 0?
 
-  //ISR Timer Setup
-  Timer1.initialize(1000000);
-  Timer1.attachInterrupt(TimerISR);
+  // Run calibration
+  altitude_servo.write(90);
+  azimuth_servo.write(90);
+  delay(5000);
 
-  // Movement delay time.
-  delay(10);
+  lastUpdate = millis();
 }
 
 void loop() {
-
-}
-
-void ldr_array_read(uint16_t *ldr_array) {
-  *(ldr_array + LDR_TL) = analogRead(LDR_TL_PIN);
-  *(ldr_array + LDR_TR) = analogRead(LDR_TR_PIN);
-  *(ldr_array + LDR_BL) = analogRead(LDR_BL_PIN);
-  *(ldr_array + LDR_BR) = analogRead(LDR_BR_PIN);
-}
-
-void checkError(int16_t *altitude_error, int16_t *azimuth_error) {
-  //ldr_array_read(ldr_array);
-
-  // Possibly a better algorithm for this? I think max works well because there is 2 LDRs per direction, but depending on the diagional
-  // aspect of the sun, one of the LDRs for each direction will always see the sun better and the other will not be able to tell us much.
-
-  // To compute the altitude error, lets take the maximum brightness from the top/bottom photoresistors 
-  // our error will be TOP - BOTTOM, since a brighter light means a lower resistance thus higher voltage then,
-  //     a + altitude error means we need to move UP since top photoresistor had brigher light
-  //     a - altitude error means we need to move DOWN since bottom photoresistor had a brigher light
-  *altitude_error = max(ldr_array[LDR_TL], ldr_array[LDR_TR]) - max(ldr_array[LDR_BL], ldr_array[LDR_BR]);
-
-  // Do something similar for azimuth
-  // our error will be RIGHT - LEFT (as if you are the solar panel facing the sun)
-  //     a + azimuth error means we need to move RIGHT since right photoresistor had brigher light
-  //     a - azimuth error means we need to move LEFT since left photoresistor had a brigher light
-  *azimuth_error = max(ldr_array[LDR_TR], ldr_array[LDR_BR]) - max(ldr_array[LDR_TL], ldr_array[LDR_BL]);
-
-  #if DEBUG_MODE
-    #if DEBUG_MODE_VERBOSE
-      Serial.print("LDR TR:\t\t"); Serial.println(ldr_array[LDR_TR]);
-      Serial.print("LDR TL:\t\t"); Serial.println(ldr_array[LDR_TL]);
-      Serial.print("LDR BR:\t\t"); Serial.println(ldr_array[LDR_BR]);
-      Serial.print("LDR BL:\t\t"); Serial.println(ldr_array[LDR_BL]);
-    #endif
-
-    Serial.print("Altitude Error:\t\t"); Serial.println((int)altitude_error);
-    Serial.print("Azimuth Error:\t\t"); Serial.println((int)azimuth_error);
-  #endif
-
-}
-
-void repositionPanel(int16_t altitude_error, int16_t azimuth_error) {
-
-  // need to think about how to compute the new angle based on the error, should the increase/decrease in angle be reletive to the error amount
-  // also what do we do if for azimuth new_angle > 180 or < 0? we would need to swing both azimuth and altitude to get the other 180* of azimuth.
-  // altitude angle should never be > 180 or < 0 because sun rises and sets around the angle of the horizon which is a "line" so 180* max angle.
-  uint8_t old_altitude_angle = (uint8_t)altitude_servo.read();
-  uint8_t old_azimuth_angle = (uint8_t)azimuth_servo.read();
-  uint8_t new_altitude_angle = old_altitude_angle;
-  uint8_t new_azimuth_angle = old_azimuth_angle;
-
-
-  if (altitude_error > 0) {
-    
-  } else {
-
-  }
-
-  if (azimuth_error > 0) {
-
-  } else {
-
-  }
-
-  #if DEBUG_MODE
-    Serial.print("New Altitude:\t\t"); Serial.println(new_altitude_angle);
-    Serial.print("New Azimuth:\t\t"); Serial.println(azimuth_error);
-  #endif
-
-  altitude_servo.write(new_altitude_angle);
-  azimuth_servo.write(new_azimuth_angle);
-
-  delay(15); // wait for servos to move into proper position.
-}
-
-void TimerISR() {
-  count++;
-  if (count > 10) { // 10 second tmp
-    ldr_array_read(ldr_array);                      
-    checkError(&altitude_error, &azimuth_error);    
+  // if (millis() - lastUpdate >= interval) {
+  //   lastUpdate += interval;
+    checkError(&altitude_error, &azimuth_error);
     repositionPanel(altitude_error, azimuth_error);
-    Serial.println("10 seconds passed"); 
-    count = 0;
-  }
+
+    #if DEBUG_MODE
+      Serial.println(F("-------------------------"));
+    #endif
+  // }
+}
+
+void ldr_array_read(uint16_t *arr) {
+  arr[LDR_TL] = analogRead(LDR_TL_PIN);
+  arr[LDR_TR] = analogRead(LDR_TR_PIN);
+  arr[LDR_BL] = analogRead(LDR_BL_PIN);
+  arr[LDR_BR] = analogRead(LDR_BR_PIN);
+}
+
+void checkError(int16_t *altErr, int16_t *aziErr) {
+  ldr_array_read(ldr_array);
+
+  #if DEBUG_MODE
+    Serial.print(F("LDR raw TL:")); Serial.print(ldr_array[LDR_TL]);
+    Serial.print(F(" TR:"));     Serial.print(ldr_array[LDR_TR]);
+    Serial.print(F(" BL:"));     Serial.print(ldr_array[LDR_BL]);
+    Serial.print(F(" BR:"));     Serial.println(ldr_array[LDR_BR]);
+  #endif
+
+  //averages 
+  int topAvg   = (ldr_array[LDR_TL] + ldr_array[LDR_TR]) / 2;
+  int botAvg   = (ldr_array[LDR_BL] + ldr_array[LDR_BR]) / 2;
+  int leftAvg  = (ldr_array[LDR_TL] + ldr_array[LDR_BL]) / 2;
+  int rightAvg = (ldr_array[LDR_TR] + ldr_array[LDR_BR]) / 2;
+
+  // error
+  *altErr = topAvg - botAvg;    // tilting up and down
+  *aziErr = rightAvg - leftAvg; // tilting left and right
+
+  #if DEBUG_MODE
+    Serial.print(F("Error Alt: ")); Serial.print(*altErr);
+    Serial.print(F("  Azimuth: "));  Serial.println(*aziErr);
+  #endif
+}
+
+void repositionPanel(int16_t altErr, int16_t aziErr) {
+  int16_t oldAltAng = altitude_servo.read();
+  int16_t oldAziAng = azimuth_servo.read();
+
+  // derivative 
+  int16_t dAlt = altErr - prevAltError;
+  int16_t dAzi = aziErr - prevAzError;
+
+  // PD outputs
+  float outAlt = Kp_alt * altErr + Kd_alt * dAlt;
+  float outAzi = Kp_az  * aziErr + Kd_az  * dAzi;
+
+  // angle deltas
+  int16_t deltaAlt = (int16_t)round(outAlt);
+  int16_t deltaAzi = (int16_t)round(outAzi);
+
+  // Logic for backwards movement
+  deltaAzi = (oldAltAng < 90) ? -1 * deltaAzi : deltaAzi;
+
+  // new angles
+  int16_t newAlt = constrain(oldAltAng + deltaAlt,  0, 180);
+  int16_t newAzi = constrain(oldAziAng + deltaAzi, 0, 180);
+
+
+  #if DEBUG_MODE
+    Serial.print(F("Servo→ Altitude: ")); Serial.print(newAlt);
+    Serial.print(F("  Azimuth: "));       Serial.println(newAzi);
+  #endif
+
+  altitude_servo.write(newAlt);
+  azimuth_servo.write(newAzi);
+
+  prevAltError = altErr;
+  prevAzError  = aziErr;
+
+  delay(500);
 }

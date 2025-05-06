@@ -39,10 +39,12 @@ int16_t altitude_error = 0, azimuth_error = 0;
 int16_t prevAltError  = 0, prevAzError   = 0;
 Servo altitude_servo, azimuth_servo;
 
-// millis() timing
-unsigned long lastUpdate     = 0;
-const unsigned long interval = 10UL * 100UL;  // 10 seconds
-
+// Interrupt based timer
+volatile uint16_t tickCounter = 0;
+volatile bool oneSecondElapsed = false;
+unsigned long secondsCounter = 0;
+const unsigned long intervalSeconds = 1200; //20 min
+bool timerActive = false; // disable timer for demo
 
 void setup() {
   #if DEBUG_MODE
@@ -57,26 +59,40 @@ void setup() {
   altitude_servo.attach(ALTITUDE_SERVO_PIN);
   azimuth_servo.attach(AZIMUTH_SERVO_PIN);
 
-  // Center panel at 90, or 0?
-
   // Run calibration
   altitude_servo.write(90);
   azimuth_servo.write(90);
+  
   delay(5000);
 
-  lastUpdate = millis();
+  setupTimer2();
 }
 
 void loop() {
-  // if (millis() - lastUpdate >= interval) {
-  //   lastUpdate += interval;
-    checkError(&altitude_error, &azimuth_error);
-    repositionPanel(altitude_error, azimuth_error);
 
-    #if DEBUG_MODE
+  if (timerActive && oneSecondElapsed) {
+    oneSecondElapsed = false;
+    secondsCounter++;
+
+    if (secondsCounter >= intervalSeconds) {
+      timerActive = false;
+
+      checkError(&altitude_error, &azimuth_error);
+      repositionPanel(altitude_error, azimuth_error);
+      #if DEBUG_MODE
       Serial.println(F("-------------------------"));
-    #endif
-  // }
+      #endif
+
+      secondsCounter = 0;
+      timerActive = true;
+    }
+  } else if (!timerActive) {
+      checkError(&altitude_error, &azimuth_error);
+      repositionPanel(altitude_error, azimuth_error);
+      #if DEBUG_MODE
+      Serial.println(F("-------------------------"));
+      #endif
+  }
 }
 
 void ldr_array_read(uint16_t *arr) {
@@ -148,4 +164,31 @@ void repositionPanel(int16_t altErr, int16_t aziErr) {
   prevAzError  = aziErr;
 
   delay(500);
+}
+
+void setupTimer2() {
+  noInterrupts();
+  TCCR2A = 0;
+  TCCR2B = 0;
+
+  // Set CTC mode
+  TCCR2A |= (1 << WGM21);
+
+  // Set compare match value for ~2ms tick (500 Hz)
+  OCR2A = 249; // (16MHz / 128 / (249 + 1)) = ~500 Hz
+
+  // Enable interrupt on match
+  TIMSK2 |= (1 << OCIE2A);
+
+  // Set prescaler to 128 and start Timer2
+  TCCR2B |= (1 << CS22) | (1 << CS20); // CS22 + CS20 = 128 prescaler
+  interrupts();
+}
+
+ISR(TIMER2_COMPA_vect) {
+  tickCounter++;
+  if (tickCounter >= 500) { // 500 ticks = 1 second
+    tickCounter = 0;
+    oneSecondElapsed = true;
+  }
 }
